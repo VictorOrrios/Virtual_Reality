@@ -96,7 +96,7 @@ if(UNIX AND NOT APPLE)
     # ArUco compilado desde aruco-3.1.12
     find_library(ARUCO_LIBRARY
         NAMES aruco
-        PATHS "/home/victor/dev/VR/aruco-3.1.12/build/src"
+        PATHS "/home/victor/dev/VR/Tracking/aruco-3.1.12/build/src"
         NO_DEFAULT_PATH
         REQUIRED
     )
@@ -105,7 +105,7 @@ if(UNIX AND NOT APPLE)
 
     # Directorios para encontrar las bibliotecas al ejecutar
     set(CMAKE_BUILD_RPATH
-        "${OPENCV4_LIB_DIR};/home/victor/dev/VR/aruco-3.1.12/build/src"
+        "${OPENCV4_LIB_DIR};/home/victor/dev/VR/Tracking/aruco-3.1.12/build/src"
     )
 else()
     list(APPEND LIBRARIES opencv_core opencv_calib3d opencv_imgcodecs

@@ -1,3 +1,7 @@
+#include "glm/ext/matrix_transform.hpp"
+#include "opencv2/calib3d.hpp"
+#include "opencv2/core/mat.hpp"
+#include <cmath>
 #include <stdio.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -38,7 +42,7 @@ const unsigned int SCR_HEIGHT = 720;
 #ifdef _WIN32
 std::string BASE_PATH = "./shaders/";
 #else
-std::string BASE_PATH = "/home/victor/dev/VR/rv_practica_tracking/shaders/";
+std::string BASE_PATH = "/home/victor/dev/VR/Tracking/rv_practica_tracking/shaders/";
 #endif
 
 // aruco
@@ -64,6 +68,11 @@ glm::vec3 light_position = glm::vec3(1.0f, 1.0f, 1.0f);
 glm::vec3 current_pos_left = glm::vec3(0.2f, 0.2f, 0.5f);
 glm::vec3 current_pos_right = glm::vec3(0.2f, 0.2f, 0.5f);
 glm::vec3 object_hand = glm::vec3(0.0f, 0.0f, 0.0f);
+
+// Box 2 params
+glm::vec3 box2_pos(0.1,0,0);
+glm::vec3 box2_look(0,0,1);
+glm::vec3 box2_up(0,1,0);
 
 // converts cv::Mat of size 3x3 to glm::mat3
 bool fromCV2GLM_3x3(const cv::Mat& cvmat, glm::mat3* glmmat) {
@@ -288,15 +297,15 @@ int main(int argc, char **argv)
         //			-- Detect and Draw MARKERS --
         //***************************************************
 
-        // TheMarkers = MDetector.detect( ...... )
+        TheMarkers = MDetector.detect(frame);
 
         if (TheMarkers.size() > 0)
         {
             for (unsigned int i = 0; i < TheMarkers.size(); i++)
             {
                 TheMarkers[i].calculateExtrinsics(TheMarkerSize, TheCameraParameters);
-
-
+                TheMarkers[i].draw(frame);
+                aruco::CvDrawingUtils::draw3dAxis(frame,TheMarkers[i],TheCameraParameters);
             }
         }
 
@@ -309,7 +318,58 @@ int main(int argc, char **argv)
         //		 -- Transformations and Rotations --
         //***************************************************
 
+        for(auto& marker: TheMarkers){
+            if(marker.id != 166) continue;
 
+            glm::vec3 new_pos(0);
+            glm::vec3 new_look(0);
+            glm::vec3 new_up(0);
+
+            new_pos.x = marker.Tvec.at<float>(0);
+            new_pos.y = marker.Tvec.at<float>(1);
+            new_pos.z = marker.Tvec.at<float>(2);
+            glm::mat3 pos_correction(1.0);
+            pos_correction[1][1] *= -1;
+            pos_correction[2][2] *= -1;
+            new_pos = pos_correction*new_pos;
+            current_pos = new_pos*0.9f + current_pos*0.1f;
+
+            float auxVal = marker.Rvec.at<float>(0);
+            marker.Rvec.at<float>(0) = marker.Rvec.at<float>(1);
+            marker.Rvec.at<float>(1) = auxVal;
+            cv::Mat aux;
+            cv::Rodrigues(marker.Rvec, aux);
+            new_look.x = aux.at<float>(0);
+            new_look.y = aux.at<float>(1);
+            new_look.z = aux.at<float>(2);
+            glm::mat3 rot_correction(0.0);
+            rot_correction[0][1] = -1;
+            rot_correction[1][0] = 1;
+            rot_correction[2][2] = -1;
+            new_look = rot_correction*new_look;
+            look_vector = new_look*0.5f + look_vector*0.5f;
+
+            marker.Rvec.at<float>(1) = marker.Rvec.at<float>(0);
+            marker.Rvec.at<float>(0) = auxVal;
+
+            auxVal = marker.Rvec.at<float>(1);
+            marker.Rvec.at<float>(1) = marker.Rvec.at<float>(2);
+            marker.Rvec.at<float>(2) = auxVal;
+
+            cv::Rodrigues(marker.Rvec, aux);
+
+            new_up.x = aux.at<float>(0);
+            new_up.y = aux.at<float>(1);
+            new_up.z = aux.at<float>(2);
+            glm::mat3 rot_correction_2(0.0);
+            rot_correction_2[0][0] = -1;
+            rot_correction_2[1][2] = 1;
+            rot_correction_2[2][1] = 1;
+            new_up = rot_correction_2*new_up;
+            up_vector = new_up*0.5f + up_vector*0.5f;
+
+
+        }
 
         //***************************************************
         //                Fin TAREA 2 y 3
@@ -323,9 +383,9 @@ int main(int argc, char **argv)
 
         projection = glm::perspective(FOV, (float)SCR_WIDTH / (float)SCR_HEIGHT, NearClipPlane, FarClipPlane);
 
-        // printf("current_pos      : % .2f  % .2f  % .2f \n", current_pos.x, current_pos.y, current_pos.z);
-        // printf("look_vector      : % .2f  % .2f  % .2f \n", look_vector.x, look_vector.y, look_vector.z);
-        // printf("up_vector        : % .2f  % .2f  % .2f \n", up_vector.x, up_vector.y, up_vector.z);
+         printf("current_pos      : % .2f  % .2f  % .2f \n", current_pos.x, current_pos.y, current_pos.z);
+         printf("look_vector      : % .2f  % .2f  % .2f \n", look_vector.x, look_vector.y, look_vector.z);
+         printf("up_vector        : % .2f  % .2f  % .2f \n", up_vector.x, up_vector.y, up_vector.z);
 
         current_view = glm::lookAt(
             current_pos,    // camera pos
@@ -385,6 +445,74 @@ int main(int argc, char **argv)
         glm::mat4 model = glm::mat4(1.0f);
         // sets model matrix
         ourShader.setMat4("model", model);
+
+        // draws
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glBindVertexArray(0);
+
+        // BOX2
+        glBindVertexArray(tools->m_VAOs[2]);
+        // calculate the model matrix for each object and pass it to shader before drawing
+        glm::mat4 model2 = glm::mat4(1.0f);
+
+
+
+        for(auto& marker: TheMarkers){
+            if(marker.id != 85) continue;
+
+            glm::vec3 new_pos(0);
+            glm::vec3 new_look(0);
+            glm::vec3 new_up(0);
+
+            new_pos.x = marker.Tvec.at<float>(0);
+            new_pos.y = marker.Tvec.at<float>(1);
+            new_pos.z = marker.Tvec.at<float>(2);
+            glm::mat3 pos_correction(1.0);
+            pos_correction[0][1] = 1;
+            pos_correction[1][0] = 1;
+            pos_correction[2][2] = 1;
+            new_pos = pos_correction*new_pos;
+            box2_pos = new_pos*0.9f + box2_pos*0.1f;
+
+            float auxVal = marker.Rvec.at<float>(0);
+            marker.Rvec.at<float>(0) = marker.Rvec.at<float>(1);
+            marker.Rvec.at<float>(1) = auxVal;
+            cv::Mat aux;
+            cv::Rodrigues(marker.Rvec, aux);
+            new_look.x = aux.at<float>(0);
+            new_look.y = aux.at<float>(1);
+            new_look.z = aux.at<float>(2);
+            glm::mat3 rot_correction(0.0);
+            rot_correction[0][1] = -1;
+            rot_correction[1][0] = 1;
+            rot_correction[2][2] = -1;
+            new_look = rot_correction*new_look;
+            //box2_look = new_look*0.5f + box2_look*0.5f;
+
+            marker.Rvec.at<float>(1) = marker.Rvec.at<float>(0);
+            marker.Rvec.at<float>(0) = auxVal;
+
+            auxVal = marker.Rvec.at<float>(1);
+            marker.Rvec.at<float>(1) = marker.Rvec.at<float>(2);
+            marker.Rvec.at<float>(2) = auxVal;
+
+            cv::Rodrigues(marker.Rvec, aux);
+
+            new_up.x = aux.at<float>(0);
+            new_up.y = aux.at<float>(1);
+            new_up.z = aux.at<float>(2);
+            glm::mat3 rot_correction_2(0.0);
+            rot_correction_2[0][0] = -1;
+            rot_correction_2[1][2] = 1;
+            rot_correction_2[2][1] = 1;
+            new_up = rot_correction_2*new_up;
+            //box2_up = new_up*0.5f + box2_up*0.5f;
+        }
+
+        box2_pos.z = -0.1; // Lock to plane
+        model2 = glm::lookAt(box2_pos, box2_look, box2_up);
+        // sets model matrix
+        ourShader.setMat4("model", model2);
 
         // draws
         glDrawArrays(GL_TRIANGLES, 0, 36);
